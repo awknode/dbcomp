@@ -1,0 +1,24 @@
+[package]
+name = "dbcomp"
+version = "0.1.2"
+edition = "2021"
+authors = ["awk studios"]
+description = "dBcomp: small everyday compressor with a one-knob saturator"
+
+[workspace]
+members = ["xtask"]
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[dependencies]
+# AWKNODE: our nice-plug fork (~/Projects/nice-plug-awk), mounted at /nice-plug-awk by build.sh
+nice-plug = { path = "/nice-plug-awk/crates/nice-plug" }
+nice-plug-egui = { path = "/nice-plug-awk/crates/nice-plug-egui" }
+egui = { version = "0.37.0", default-features = false, features = ["bytemuck"] }
+serde_json = "1"
+
+[profile.release]
+lto = "thin"
+strip = "symbols"
+

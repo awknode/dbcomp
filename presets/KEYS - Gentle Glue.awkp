@@ -1,0 +1,24 @@
+{
+  "fields": {},
+  "params": {
+    "attack": {
+      "f32": 20.0
+    },
+    "gain": {
+      "f32": 1.5
+    },
+    "opto": {
+      "bool": true
+    },
+    "ratio": {
+      "f32": 2.0
+    },
+    "release": {
+      "f32": 250.0
+    },
+    "thresh": {
+      "f32": -14.0
+    }
+  },
+  "version": "0.1.2"
+}

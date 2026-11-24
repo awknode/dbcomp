@@ -36,6 +36,7 @@ fn new_state(name: &'static str) -> St {
 
 pub(crate) fn create(params: Arc<DbCompParams>, shared: Arc<Shared>) -> Option<crate::nice_app::AwkEditor> {
     let state = params.editor_state.clone();
+    crate::presets::apply_scale(&state, &params.ui_scale);
     create_egui_editor(state, nice_plug_egui::RepaintNotifier::new(), nice_plug_egui::EguiNiceSettings::default(), crate::nice_app::AwkApp::new(install_fonts, {
         let mut __st = new_state("dBcomp");
         Box::new(move |ctx: &mut egui::Ui, setter: &ParamSetter| {
@@ -267,7 +268,7 @@ fn frame(root: &mut egui::Ui, setter: &ParamSetter, st: &mut St, p: &DbCompParam
         }
         txt(&pa, pos2(o.x + 380.0, cy), Align2::LEFT_CENTER, "LATENCY 0", mono(10.0), DIM, 1.5);
         txt(&pa, pos2(o.x + 760.0, cy), Align2::RIGHT_CENTER, format!("awk studios · {} v{}", NAME.to_lowercase(), env!("CARGO_PKG_VERSION")), mono(10.0), DIM, 1.0);
-        let _ = st.presets.strip(ui, setter, p, whole, &st.skin, &p.mix, &p.bypass);
+        let _ = st.presets.strip(ui, setter, p, whole, &st.skin, &p.mix, &p.bypass, &p.ui_scale);
     });
 }
 

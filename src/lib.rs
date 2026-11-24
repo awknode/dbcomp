@@ -27,7 +27,14 @@ mod presets;
 use dbcore::*;
 
 const CR: usize = 16;
-const KNEE: f32 = 6.0;
+/// 0.1.3: fitted to Waves RComp (awk-bench 2026-11-22): 24 dB knee, threshold reads 1 dB lower,
+/// ratio law r^1.25 -> GR within ~1 dB of RComp at 2:1 / 4:1 / 8:1 (was 2-3 dB light everywhere).
+const KNEE: f32 = 24.0;
+const THR_OFFSET: f32 = 1.0;
+const RATIO_EXP: f32 = 1.25;
+/// RComp's attack knob measures ~1.8x slower (10 ms -> 18 ms to 63%), its release ~0.48x (120 ms -> 58 ms).
+const ATTACK_SCALE: f32 = 1.8;
+const RELEASE_SCALE: f32 = 0.32;
 
 pub struct Shared {
     pub meters: awk_ui::Meters,
@@ -75,6 +82,9 @@ pub struct DbCompParams {
     pub safe: BoolParam,
     #[id = "bypass"]
     pub bypass: BoolParam,
+    /// Window size (1.0 = 100%), saved with the project. 0 = not set: open at the default.
+    #[persist = "ui-scale"]
+    pub ui_scale: Arc<std::sync::RwLock<f32>>,
 }
 
 fn ms_param(name: &str, def: f32, min: f32, max: f32) -> FloatParam {
@@ -113,6 +123,7 @@ impl Default for DbCompParams {
             mix: awk_ui::mix_param(),
             safe: awk_ui::safe_param(),
             bypass: awk_ui::bypass_param(),
+            ui_scale: Arc::new(std::sync::RwLock::new(0.0)),
         }
     }
 }
@@ -143,7 +154,7 @@ impl Default for State {
 pub fn release_mult(gr: f32, arc_m: f32, arc: bool, opto: bool) -> f32 {
     let e = (-gr / 4.0).exp();
     let beh = if opto { 0.5 + 1.5 * e } else { 1.5 - e };
-    beh * if arc { arc_m } else { 1.0 }
+    RELEASE_SCALE * beh * if arc { arc_m } else { 1.0 }
 }
 
 pub struct Engine {
@@ -214,12 +225,14 @@ impl Engine {
         for i in 0..l.len() {
             let (x0, x1) = (l[i], r[i]);
             if self.n == 0 {
-                self.ca = coef(self.sr, st.attack_ms * 0.001);
+                self.ca = coef(self.sr, st.attack_ms * ATTACK_SCALE * 0.001);
                 self.cr = coef(self.sr, st.release_ms * 0.001 * release_mult(self.gr, self.crest.mult(), st.arc, st.opto));
             }
             self.n = (self.n + 1) % CR;
             self.crest.tick(x0, x1);
-            let t = gr_soft(self.lvl.tick(x0, x1), st.thresh, st.ratio, KNEE);
+            // knee widens as THRESH comes down, so THRESH 0 stays a clean "off" (hard knee at 0 dBFS)
+            let knee = KNEE.min(-2.0 * st.thresh).max(0.5);
+            let t = gr_soft(self.lvl.tick(x0, x1) + THR_OFFSET, st.thresh, st.ratio.max(1.0).powf(RATIO_EXP), knee);
             let c = if t > self.gr { self.ca } else { self.cr };
             self.gr = t + c * (self.gr - t);
             peak_gr = peak_gr.max(self.gr);
@@ -227,7 +240,8 @@ impl Engine {
             let (mut y0, mut y1) = (x0 * gc, x1 * gc);
             if warm_on {
                 // quantised so the saturator's cached coefficients hold between steps
-                let w = ((self.gr / 18.0).min(1.0) * 0.35 * 64.0).round() / 64.0;
+                // 0.1.3: RComp's WARM is very subtle (2nd harmonic ~-105 dB); ours was -49 dB. Now ~20 dB subtler.
+                let w = ((self.gr / 18.0).min(1.0) * 0.035 * 512.0).round() / 512.0;
                 y0 = self.warm.tick(0, y0, w, 1);
                 y1 = self.warm.tick(1, y1, w, 1);
             }

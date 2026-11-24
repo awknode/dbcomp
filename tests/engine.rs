@@ -39,13 +39,15 @@ fn defaults_are_transparent() {
     for i in 0..x.len() { assert_eq!(y[i], x[i], "sample {i}"); }
 }
 
+/// 0.1.3: the static curve matches Waves RComp (awk-bench 2026-11-22, 200 Hz at -12 dBFS RMS,
+/// ARC/WARM/ELECTRO): thresh -24 4:1 -> -13.6 dB, 2:1 -> -10.3, 8:1 -> -14.4; thresh -12 4:1 -> -4.7.
 #[test]
 fn static_curve_matches_thresh_and_ratio() {
-    let x = sine(48000, -10.0, 200.0);
-    for (th, ra, want) in [(-20.0f32, 4.0f32, -7.5f32), (-20.0, 2.0, -5.0), (-30.0, 10.0, -18.0), (0.0, 4.0, 0.0)] {
+    let x = sine(48000, -12.0 + 3.0103, 200.0);
+    for (th, ra, want) in [(-24.0f32, 4.0f32, -13.6f32), (-24.0, 2.0, -10.3), (-24.0, 8.0, -14.4), (-12.0, 4.0, -4.7), (0.0, 4.0, 0.0)] {
         let g = gain_db(&State { thresh: th, ratio: ra, warm: false, safe: false, ..State::default() }, &x);
-        println!("thresh {th} ratio {ra}: {g:.2} dB (want {want})");
-        assert!((g - want).abs() < 0.8, "{th}/{ra}: {g}");
+        println!("thresh {th} ratio {ra}: {g:.2} dB (RComp {want})");
+        assert!((g - want).abs() < 1.5, "{th}/{ra}: {g}");
     }
 }
 
@@ -63,14 +65,14 @@ fn slow_attack_lets_the_snare_crack_through() {
     assert!(slow > fast * 1.6);
 }
 
-/// dB of GR left 150 ms after a loud section ends
+/// dB of GR left 40 ms after a loud section ends (0.1.3: releases ~3x quicker, like RComp)
 fn tail(arc: bool, opto: bool, loud_s: f32) -> f32 {
     let n = (loud_s * SR) as usize;
     let mut x = sine(n, -6.0, 150.0);
     x.extend(sine(24000, -40.0, 150.0));
     let st = State { thresh: -30.0, ratio: 6.0, release_ms: 100.0, arc, opto, warm: false, safe: false, ..State::default() };
     let y = run(&st, &x);
-    let i = n + 7200;
+    let i = n + 1920;
     let w = 960;
     -20.0 * (rms(&y[i..i + w]) / rms(&x[i..i + w])).log10()
 }
@@ -79,7 +81,7 @@ fn tail(arc: bool, opto: bool, loud_s: f32) -> f32 {
 fn release_follows_arc_and_behaviour() {
     let (e, o) = (tail(false, false, 0.3), tail(false, true, 0.3));
     let (short, long) = (tail(true, false, 0.05), tail(true, false, 2.0));
-    println!("GR 150 ms after: electro {e:.1}, opto {o:.1}; ARC after 50 ms burst {short:.1}, after 2 s {long:.1}");
+    println!("GR 40 ms after: electro {e:.1}, opto {o:.1}; ARC after 50 ms burst {short:.1}, after 2 s {long:.1}");
     assert!((e - o).abs() > 0.5, "OPTO and ELECTRO should release differently");
     assert!(long > short + 0.5, "ARC: sustained compression releases slower");
 }
@@ -103,8 +105,9 @@ fn arc_reads_the_crest_factor() {
     };
     let ((ct, mt), (cd, md)) = (m(&tone), m(&drums));
     println!("crest: tone {ct:.1} dB -> release x{mt:.2}; drums {cd:.1} dB -> release x{md:.2}");
-    assert!(ct < 4.5 && mt > 2.0);
-    assert!(cd > 12.0 && md < 0.8);
+    // 0.1.3, like RComp's ARC: sustained material keeps the knob's release, spiky material gets quicker
+    assert!(ct < 4.5 && (mt - 1.0).abs() < 0.05);
+    assert!(cd > 12.0 && md < 0.6);
 }
 
 #[test]

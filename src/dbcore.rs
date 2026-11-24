@@ -219,7 +219,9 @@ impl Crest {
     pub fn mult(&mut self) -> f32 {
         if let Some(c) = self.db() {
             let t = ((c - CREST_LO_DB) / (CREST_HI_DB - CREST_LO_DB)).clamp(0.0, 1.0);
-            self.m = 2.5 * 0.2f32.powf(t);
+            // 0.1.3: like RComp's ARC, sustained material keeps the knob's release (was 2.5x),
+            // punchy material gets quicker (down to 0.4x)
+            self.m = 0.4f32.powf(t);
         }
         self.m
     }
